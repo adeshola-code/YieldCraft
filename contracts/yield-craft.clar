@@ -58,3 +58,25 @@
         utilization: uint
     }
 )
+
+
+;; Public functions
+
+;; Add a new protocol to the aggregator
+(define-public (add-protocol 
+    (protocol-address principal)
+    (protocol-type (string-ascii 20)))
+    (begin
+        (asserts! (is-contract-owner) ERR-NOT-AUTHORIZED)
+        (asserts! (< (var-get protocol-count) u50) ERR-MAX-PROTOCOLS-REACHED)
+        
+        (let ((new-id (+ (var-get protocol-count) u1)))
+            (map-set protocols new-id {
+                protocol-address: protocol-address,
+                is-active: true,
+                tvl: u0,
+                apy: u0,
+                protocol-type: protocol-type
+            })
+            (var-set protocol-count new-id)
+            (ok new-id))))
