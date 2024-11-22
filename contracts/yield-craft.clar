@@ -172,3 +172,21 @@
             })
             
         (ok rewards)))
+
+
+;; Update protocol rates and stats
+(define-public (update-protocol-stats
+    (protocol-id uint)
+    (new-apy uint)
+    (new-tvl uint))
+    (begin
+        (asserts! (is-contract-owner) ERR-NOT-AUTHORIZED)
+        (asserts! (is-protocol-active protocol-id) ERR-PROTOCOL-NOT-ACTIVE)
+        
+        (map-set protocols protocol-id
+            (merge (unwrap-panic (map-get? protocols protocol-id))
+                {
+                    apy: new-apy,
+                    tvl: new-tvl
+                }))
+        (ok true)))
