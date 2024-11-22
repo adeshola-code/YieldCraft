@@ -221,3 +221,18 @@
         (if (or (is-eq deposit u0) (is-eq blocks-elapsed u0))
             u0
             (/ (* deposit (* blocks-elapsed (get apy protocol))) u10000))))
+
+;; Calculate platform fee
+(define-private (calculate-fee (amount uint))
+    (/ (* amount (var-get platform-fee)) u10000))
+
+;; Update protocol TVL
+(define-private (update-protocol-tvl (protocol-id uint) (amount uint) (is-deposit bool))
+    (let ((protocol (unwrap-panic (map-get? protocols protocol-id))))
+        (map-set protocols protocol-id
+            (merge protocol
+                {
+                    tvl: (if is-deposit
+                            (+ (get tvl protocol) amount)
+                            (- (get tvl protocol) amount))
+                }))))
