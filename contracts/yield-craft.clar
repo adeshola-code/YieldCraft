@@ -207,3 +207,17 @@
 (define-read-only (get-deposit-height (user principal) (protocol-id uint))
     (default-to u0
         (get deposit-height (map-get? user-deposits { user: user, protocol-id: protocol-id }))))
+
+;; Private functions
+
+;; Calculate rewards based on deposit amount and time
+(define-private (calculate-rewards (user principal) (protocol-id uint))
+    (let (
+        (deposit (get-user-deposit user protocol-id))
+        (deposit-height (get-deposit-height user protocol-id))
+        (protocol (unwrap-panic (map-get? protocols protocol-id)))
+        (blocks-elapsed (- block-height deposit-height))
+    )
+        (if (or (is-eq deposit u0) (is-eq blocks-elapsed u0))
+            u0
+            (/ (* deposit (* blocks-elapsed (get apy protocol))) u10000))))
