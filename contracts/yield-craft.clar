@@ -19,3 +19,10 @@
 (define-constant ERR-PROTOCOL-NOT-ACTIVE (err u104))
 (define-constant ERR-SLIPPAGE-TOO-HIGH (err u105))
 (define-constant ERR-MAX-PROTOCOLS-REACHED (err u106))
+
+;; Data variables
+(define-data-var contract-owner principal tx-sender)
+(define-data-var protocol-count uint u0)
+(define-data-var min-deposit uint u1000000) ;; in smallest units
+(define-data-var max-slippage uint u50) ;; 0.5%
+(define-data-var platform-fee uint u10) ;; 0.1%
