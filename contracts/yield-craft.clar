@@ -48,3 +48,13 @@
         last-claim: uint
     }
 )
+
+(define-map protocol-assets
+    { protocol-id: uint, token: principal }
+    {
+        balance: uint,
+        lending-rate: uint,
+        borrowing-rate: uint,
+        utilization: uint
+    }
+)
