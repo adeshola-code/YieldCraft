@@ -197,3 +197,8 @@
 (define-read-only (get-best-protocol (token-contract <ft-trait>))
     (let ((count (var-get protocol-count)))
         (fold check-protocol u0 (generate-sequence u1 count))))
+
+;; Get user deposit in a protocol
+(define-read-only (get-user-deposit (user principal) (protocol-id uint))
+    (default-to u0
+        (get amount (map-get? user-deposits { user: user, protocol-id: protocol-id }))))
