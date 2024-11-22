@@ -236,3 +236,12 @@
                             (+ (get tvl protocol) amount)
                             (- (get tvl protocol) amount))
                 }))))
+
+;; Check if protocol is active
+(define-private (is-protocol-active (protocol-id uint))
+    (default-to false
+        (get is-active (map-get? protocols protocol-id))))
+
+;; Check if sender is contract owner
+(define-private (is-contract-owner)
+    (is-eq tx-sender (var-get contract-owner)))
