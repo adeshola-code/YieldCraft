@@ -110,3 +110,43 @@
         (update-protocol-tvl best-protocol amount true)
         
         (ok best-protocol)))
+
+;; Withdraw assets from a protocol
+(define-public (withdraw 
+    (token-contract <ft-trait>)
+    (protocol-id uint)
+    (amount uint))
+    (let (
+        (user tx-sender)
+        (user-deposit (get-user-deposit user protocol-id))
+    )
+        (asserts! (>= user-deposit amount) ERR-INSUFFICIENT-BALANCE)
+        (asserts! (is-protocol-active protocol-id) ERR-PROTOCOL-NOT-ACTIVE)
+        
+        ;; Calculate fees and rewards
+        (let (
+            (fee (calculate-fee amount))
+            (rewards (calculate-rewards user protocol-id))
+            (net-amount (- amount fee))
+        )
+            ;; Transfer tokens back to user
+            (try! (as-contract (contract-call? token-contract transfer 
+                net-amount 
+                (as-contract tx-sender) 
+                user 
+                none)))
+            
+            ;; Update user deposits
+            (map-set user-deposits 
+                { user: user, protocol-id: protocol-id }
+                {
+                    amount: (- user-deposit amount),
+                    rewards: rewards,
+                    deposit-height: (get-deposit-height user protocol-id),
+                    last-claim: block-height
+                })
+            
+            ;; Update protocol TVL
+            (update-protocol-tvl protocol-id amount false)
+            
+            (ok net-amount))))
