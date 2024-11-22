@@ -79,6 +79,105 @@
 (define-public (get-protocol-type)
     (ok "DEFI-AGG"))
 
+;; Private helper functions
+
+;; Check if sender is contract owner
+(define-private (is-contract-owner)
+    (is-eq tx-sender (var-get contract-owner)))
+
+;; Compare two protocols and return the one with higher APY
+(define-private (compare-protocols (protocol-a uint) (protocol-b uint))
+    (let (
+        (protocol-a-details (map-get? protocols protocol-a))
+        (protocol-b-details (map-get? protocols protocol-b))
+    )
+        (if (and
+                (is-some protocol-a-details)
+                (is-some protocol-b-details)
+                (get is-active (unwrap! protocol-a-details protocol-b))
+                (get is-active (unwrap! protocol-b-details protocol-a))
+            )
+            (if (> (get apy (unwrap! protocol-a-details protocol-b))
+                   (get apy (unwrap! protocol-b-details protocol-a)))
+                protocol-a
+                protocol-b)
+            (if (is-some protocol-a-details)
+                (if (get is-active (unwrap! protocol-a-details protocol-b))
+                    protocol-a
+                    protocol-b)
+                protocol-b))))
+
+;; Iterate through protocols to find the best one
+(define-private (iterate-protocols (current uint) (end uint) (best-so-far uint))
+    (if (> current end)
+        best-so-far
+        (iterate-protocols 
+            (+ current u1) 
+            end 
+            (compare-protocols current best-so-far))))
+
+;; Calculate rewards based on deposit amount and time
+(define-private (calculate-rewards (user principal) (protocol-id uint))
+    (let (
+        (deposit (get-user-deposit user protocol-id))
+        (deposit-height (get-deposit-height user protocol-id))
+        (protocol (unwrap-panic (map-get? protocols protocol-id)))
+        (blocks-elapsed (- block-height deposit-height))
+    )
+        (if (or (is-eq deposit u0) (is-eq blocks-elapsed u0))
+            u0
+            (/ (* deposit (* blocks-elapsed (get apy protocol))) u10000))))
+
+;; Calculate platform fee
+(define-private (calculate-fee (amount uint))
+    (/ (* amount (var-get platform-fee)) u10000))
+
+;; Update protocol TVL
+(define-private (update-protocol-tvl (protocol-id uint) (amount uint) (is-deposit bool))
+    (let ((protocol (unwrap-panic (map-get? protocols protocol-id))))
+        (map-set protocols protocol-id
+            (merge protocol
+                {
+                    tvl: (if is-deposit
+                            (+ (get tvl protocol) amount)
+                            (- (get tvl protocol) amount))
+                }))))
+
+;; Read-only functions
+
+;; Get protocol details
+(define-read-only (get-protocol (protocol-id uint))
+    (map-get? protocols protocol-id))
+
+;; Check if protocol is active
+(define-read-only (is-protocol-active (protocol-id uint))
+    (default-to false
+        (get is-active (map-get? protocols protocol-id))))
+
+;; Get protocol APY
+(define-read-only (get-protocol-apy (protocol-id uint))
+    (default-to u0
+        (get apy (map-get? protocols protocol-id))))
+
+;; Get the best protocol based on APY and TVL
+(define-read-only (get-best-protocol (token-contract <ft-trait>))
+    (let (
+        (count (var-get protocol-count))
+    )
+    (if (> count u0)
+        (ok (iterate-protocols u1 count u1))
+        (err ERR-NO-ACTIVE-PROTOCOLS))))
+
+;; Get user deposit in a protocol
+(define-read-only (get-user-deposit (user principal) (protocol-id uint))
+    (default-to u0
+        (get amount (map-get? user-deposits { user: user, protocol-id: protocol-id }))))
+
+;; Get deposit block height
+(define-read-only (get-deposit-height (user principal) (protocol-id uint))
+    (default-to u0
+        (get deposit-height (map-get? user-deposits { user: user, protocol-id: protocol-id }))))
+
 ;; Public functions
 
 ;; Add a new protocol to the aggregator
@@ -213,161 +312,6 @@
                     tvl: new-tvl
                 }))
         (ok true)))
-
-;; Read-only functions
-;; Get protocol details
-(define-read-only (get-protocol (protocol-id uint))
-    (map-get? protocols protocol-id))
-
-;; Check if protocol is active
-(define-read-only (is-protocol-active (protocol-id uint))
-    (default-to false
-        (get is-active (map-get? protocols protocol-id))))
-
-;; Get protocol APY
-(define-read-only (get-protocol-apy (protocol-id uint))
-    (default-to u0
-        (get apy (map-get? protocols protocol-id))))
-
-
-;; Compare two protocols and return the better one
-(define-read-only (compare-protocols (protocol-a uint) (protocol-b uint))
-    (let (
-        (protocol-a-details (map-get? protocols protocol-a))
-        (protocol-b-details (map-get? protocols protocol-b))
-    )
-        (if (and
-                (is-some protocol-a-details)
-                (is-some protocol-b-details)
-                (get is-active (unwrap! protocol-a-details protocol-b))
-                (get is-active (unwrap! protocol-b-details protocol-a))
-            )
-            (if (> (get apy (unwrap! protocol-a-details protocol-b))
-                   (get apy (unwrap! protocol-b-details protocol-a)))
-                protocol-a
-                protocol-b)
-            (if (is-some protocol-a-details)
-                (if (get is-active (unwrap! protocol-a-details protocol-b))
-                    protocol-a
-                    protocol-b)
-                protocol-b))))
-
-;; Find best protocol - now independent of other functions
-(define-read-only (find-best-protocol (start uint) (end uint))
-    (let ((current-best start))
-        (filter-protocols start end current-best)))
-
-;; Get the best protocol based on APY and TVL
-(define-read-only (get-best-protocol (token-contract <ft-trait>))
-    (let (
-        (count (var-get protocol-count))
-        (best-id (get-best-protocol-id u1 count))
-    )
-    (if (> count u0)
-        (ok best-id)
-        (err ERR-NO-ACTIVE-PROTOCOLS))))
-
-;; Generate a sequence of numbers for fold
-(define-read-only (generate-sequence (start uint) (end uint))
-    (list start))
-
-;; Helper function to get the best protocol ID
-(define-read-only (get-best-protocol-id (start uint) (end uint))
-    (let (
-        (result (fold check-protocol 
-            (generate-sequence start end)
-            {
-                id: u0,
-                apy: u0
-            }
-        )))
-        (get id result)))
-
-;; Get user deposit in a protocol
-(define-read-only (get-user-deposit (user principal) (protocol-id uint))
-    (default-to u0
-        (get amount (map-get? user-deposits { user: user, protocol-id: protocol-id }))))
-
-;; Get deposit block height
-(define-read-only (get-deposit-height (user principal) (protocol-id uint))
-    (default-to u0
-        (get deposit-height (map-get? user-deposits { user: user, protocol-id: protocol-id }))))
-
-;; Private functions
-
-;; Check each protocol and track the best one
-(define-private (check-protocol (current uint) (best {id: uint, apy: uint}))
-    (let (
-        (current-protocol (map-get? protocols current))
-    )
-        (if (and
-                (is-some current-protocol)
-                (get is-active (unwrap-panic current-protocol))
-                (> (get apy (unwrap-panic current-protocol)) (get apy best))
-            )
-            {
-                id: current,
-                apy: (get apy (unwrap-panic current-protocol))
-            }
-            best)))
-;; Helper function to iterate through protocols
-(define-private (filter-protocols (current uint) (max uint) (best-so-far uint))
-    (if (> current max)
-        best-so-far
-        (filter-protocols 
-            (+ current u1) 
-            max 
-            (compare-protocols current best-so-far))))
-
-;; Find the best protocol by iterating through all protocols
-(define-private (find-best-protocol (current uint) (max uint) (best-so-far uint))
-    (if (> current max)
-        best-so-far
-        (let (
-            (current-protocol (unwrap-panic (map-get? protocols current)))
-            (best-protocol (unwrap-panic (map-get? protocols best-so-far)))
-        )
-            (if (and
-                    (get is-active current-protocol)
-                    (> (get apy current-protocol) (get apy best-protocol)))
-                (find-best-protocol (+ current u1) max current)
-                (find-best-protocol (+ current u1) max best-so-far)))))
-
-;; Calculate rewards based on deposit amount and time
-(define-private (calculate-rewards (user principal) (protocol-id uint))
-    (let (
-        (deposit (get-user-deposit user protocol-id))
-        (deposit-height (get-deposit-height user protocol-id))
-        (protocol (unwrap-panic (map-get? protocols protocol-id)))
-        (blocks-elapsed (- block-height deposit-height))
-    )
-        (if (or (is-eq deposit u0) (is-eq blocks-elapsed u0))
-            u0
-            (/ (* deposit (* blocks-elapsed (get apy protocol))) u10000))))
-
-;; Calculate platform fee
-(define-private (calculate-fee (amount uint))
-    (/ (* amount (var-get platform-fee)) u10000))
-
-;; Update protocol TVL
-(define-private (update-protocol-tvl (protocol-id uint) (amount uint) (is-deposit bool))
-    (let ((protocol (unwrap-panic (map-get? protocols protocol-id))))
-        (map-set protocols protocol-id
-            (merge protocol
-                {
-                    tvl: (if is-deposit
-                            (+ (get tvl protocol) amount)
-                            (- (get tvl protocol) amount))
-                }))))
-
-;; Check if protocol is active
-(define-private (is-protocol-active (protocol-id uint))
-    (default-to false
-        (get is-active (map-get? protocols protocol-id))))
-
-;; Check if sender is contract owner
-(define-private (is-contract-owner)
-    (is-eq tx-sender (var-get contract-owner)))
 
 ;; Initialize contract
 (begin
