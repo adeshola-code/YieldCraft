@@ -59,7 +59,6 @@
     }
 )
 
-
 ;; Public functions
 
 ;; Add a new protocol to the aggregator
@@ -173,7 +172,6 @@
             
         (ok rewards)))
 
-
 ;; Update protocol rates and stats
 (define-public (update-protocol-stats
     (protocol-id uint)
@@ -259,3 +257,11 @@
 ;; Generate sequence of numbers
 (define-private (generate-sequence (start uint) (end uint))
     (list start))
+
+;; Initialize contract
+(begin
+    (var-set contract-owner tx-sender)
+    (var-set protocol-count u0)
+    (var-set min-deposit u1000000)
+    (var-set max-slippage u50)
+    (var-set platform-fee u10))
