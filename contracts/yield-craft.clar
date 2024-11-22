@@ -202,3 +202,8 @@
 (define-read-only (get-user-deposit (user principal) (protocol-id uint))
     (default-to u0
         (get amount (map-get? user-deposits { user: user, protocol-id: protocol-id }))))
+
+;; Get deposit block height
+(define-read-only (get-deposit-height (user principal) (protocol-id uint))
+    (default-to u0
+        (get deposit-height (map-get? user-deposits { user: user, protocol-id: protocol-id }))))
