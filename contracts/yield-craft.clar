@@ -224,6 +224,12 @@
     (default-to false
         (get is-active (map-get? protocols protocol-id))))
 
+;; Get protocol APY
+(define-read-only (get-protocol-apy (protocol-id uint))
+    (default-to u0
+        (get apy (map-get? protocols protocol-id))))
+
+
 ;; Compare two protocols and return the better one
 (define-read-only (compare-protocols (protocol-a uint) (protocol-b uint))
     (let (
@@ -253,10 +259,29 @@
 
 ;; Get the best protocol based on APY and TVL
 (define-read-only (get-best-protocol (token-contract <ft-trait>))
-    (let ((count (var-get protocol-count)))
-        (if (> count u0)
-            (ok (find-best-protocol u1 count))
-            (err ERR-NO-ACTIVE-PROTOCOLS))))
+    (let (
+        (count (var-get protocol-count))
+        (best-id (get-best-protocol-id u1 count))
+    )
+    (if (> count u0)
+        (ok best-id)
+        (err ERR-NO-ACTIVE-PROTOCOLS))))
+
+;; Generate a sequence of numbers for fold
+(define-read-only (generate-sequence (start uint) (end uint))
+    (list start))
+
+;; Helper function to get the best protocol ID
+(define-read-only (get-best-protocol-id (start uint) (end uint))
+    (let (
+        (result (fold check-protocol 
+            (generate-sequence start end)
+            {
+                id: u0,
+                apy: u0
+            }
+        )))
+        (get id result)))
 
 ;; Get user deposit in a protocol
 (define-read-only (get-user-deposit (user principal) (protocol-id uint))
@@ -270,6 +295,21 @@
 
 ;; Private functions
 
+;; Check each protocol and track the best one
+(define-private (check-protocol (current uint) (best {id: uint, apy: uint}))
+    (let (
+        (current-protocol (map-get? protocols current))
+    )
+        (if (and
+                (is-some current-protocol)
+                (get is-active (unwrap-panic current-protocol))
+                (> (get apy (unwrap-panic current-protocol)) (get apy best))
+            )
+            {
+                id: current,
+                apy: (get apy (unwrap-panic current-protocol))
+            }
+            best)))
 ;; Helper function to iterate through protocols
 (define-private (filter-protocols (current uint) (max uint) (best-so-far uint))
     (if (> current max)
