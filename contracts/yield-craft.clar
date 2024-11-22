@@ -80,3 +80,33 @@
             })
             (var-set protocol-count new-id)
             (ok new-id))))
+
+;; Deposit assets into the best yielding protocol
+(define-public (smart-deposit 
+    (token-contract <ft-trait>)
+    (amount uint))
+    (let (
+        (best-protocol (get-best-protocol token-contract))
+        (user tx-sender)
+        (current-block block-height)
+    )
+        (asserts! (>= amount (var-get min-deposit)) ERR-INVALID-AMOUNT)
+        (asserts! (is-protocol-active best-protocol) ERR-PROTOCOL-NOT-ACTIVE)
+        
+        ;; Transfer tokens to the contract
+        (try! (contract-call? token-contract transfer amount user (as-contract tx-sender) none))
+        
+        ;; Update user deposits
+        (map-set user-deposits 
+            { user: user, protocol-id: best-protocol }
+            {
+                amount: (+ (get-user-deposit user best-protocol) amount),
+                rewards: u0,
+                deposit-height: current-block,
+                last-claim: current-block
+            })
+        
+        ;; Update protocol TVL
+        (update-protocol-tvl best-protocol amount true)
+        
+        (ok best-protocol)))
