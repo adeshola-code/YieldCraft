@@ -255,3 +255,7 @@
         (if (> (get apy current) (get apy best))
             id
             best-so-far)))
+
+;; Generate sequence of numbers
+(define-private (generate-sequence (start uint) (end uint))
+    (list start))
