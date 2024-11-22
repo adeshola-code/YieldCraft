@@ -150,3 +150,25 @@
             (update-protocol-tvl protocol-id amount false)
             
             (ok net-amount))))
+
+;; Claim rewards from a protocol
+(define-public (claim-rewards
+    (protocol-id uint))
+    (let (
+        (user tx-sender)
+        (rewards (calculate-rewards user protocol-id))
+    )
+        (asserts! (> rewards u0) ERR-INVALID-AMOUNT)
+        (asserts! (is-protocol-active protocol-id) ERR-PROTOCOL-NOT-ACTIVE)
+        
+        ;; Update user rewards
+        (map-set user-deposits 
+            { user: user, protocol-id: protocol-id }
+            {
+                amount: (get-user-deposit user protocol-id),
+                rewards: u0,
+                deposit-height: (get-deposit-height user protocol-id),
+                last-claim: block-height
+            })
+            
+        (ok rewards)))
