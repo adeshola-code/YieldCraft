@@ -8,6 +8,10 @@
 ;; adding protocols, depositing and withdrawing assets, and claiming rewards, as well as read-only 
 ;; functions for retrieving protocol and user data.
 
+;; Import traits
+(impl-trait .protocol-trait.protocol-trait)
+
+;; Define traits
 (use-trait ft-trait .sip-010-trait.sip-010-trait)
 (use-trait protocol-trait .protocol-trait.protocol-trait)
 
@@ -58,6 +62,22 @@
         utilization: uint
     }
 )
+
+;; Implementation of protocol-trait
+(define-public (deposit (amount uint))
+    (ok amount))
+
+(define-public (withdraw (amount uint))
+    (ok amount))
+
+(define-public (get-apy)
+    (ok u0))
+
+(define-public (get-tvl)
+    (ok u0))
+
+(define-public (get-protocol-type)
+    (ok "DEFI-AGG"))
 
 ;; Public functions
 
@@ -111,7 +131,7 @@
         (ok best-protocol)))
 
 ;; Withdraw assets from a protocol
-(define-public (withdraw 
+(define-public (withdraw-from-protocol 
     (token-contract <ft-trait>)
     (protocol-id uint)
     (amount uint))

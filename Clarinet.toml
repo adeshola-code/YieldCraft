@@ -5,6 +5,17 @@ authors = []
 telemetry = true
 cache_dir = './.cache'
 requirements = []
+
+[contracts.protocol-trait]
+path = 'contracts/protocol-trait.clar'
+clarity_version = 2
+epoch = 2.5
+
+[contracts.sip-010-trait]
+path = 'contracts/sip-010-trait.clar'
+clarity_version = 2
+epoch = 2.5
+
 [contracts.yield-craft]
 path = 'contracts/yield-craft.clar'
 clarity_version = 2
