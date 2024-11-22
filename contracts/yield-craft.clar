@@ -190,3 +190,10 @@
                     tvl: new-tvl
                 }))
         (ok true)))
+
+;; Read-only functions
+
+;; Get the best protocol based on APY and TVL
+(define-read-only (get-best-protocol (token-contract <ft-trait>))
+    (let ((count (var-get protocol-count)))
+        (fold check-protocol u0 (generate-sequence u1 count))))
