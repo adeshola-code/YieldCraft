@@ -38,3 +38,13 @@
         protocol-type: (string-ascii 20)
     }
 )
+
+(define-map user-deposits
+    { user: principal, protocol-id: uint }
+    {
+        amount: uint,
+        rewards: uint,
+        deposit-height: uint,
+        last-claim: uint
+    }
+)
