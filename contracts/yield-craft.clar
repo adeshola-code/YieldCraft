@@ -245,3 +245,13 @@
 ;; Check if sender is contract owner
 (define-private (is-contract-owner)
     (is-eq tx-sender (var-get contract-owner)))
+
+;; Compare protocols to find the best one
+(define-private (check-protocol (id uint) (best-so-far uint))
+    (let (
+        (current (unwrap-panic (map-get? protocols id)))
+        (best (unwrap-panic (map-get? protocols best-so-far)))
+    )
+        (if (> (get apy current) (get apy best))
+            id
+            best-so-far)))
