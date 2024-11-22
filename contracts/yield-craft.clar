@@ -86,26 +86,35 @@
     (is-eq tx-sender (var-get contract-owner)))
 
 ;; Compare two protocols and return the one with higher APY
-(define-private (compare-protocols (protocol-a uint) (protocol-b uint))
+(define-private (compare-protocol-apys (protocol-a-apy uint) (protocol-b-apy uint) (protocol-a uint) (protocol-b uint))
+    (if (> protocol-a-apy protocol-b-apy)
+        protocol-a
+        protocol-b))
+
+;; Get protocol APY safely
+(define-private (get-protocol-apy-safe (protocol-id uint))
+    (let ((protocol (map-get? protocols protocol-id)))
+        (if (and 
+            (is-some protocol)
+            (get is-active (unwrap-panic protocol)))
+            (get apy (unwrap-panic protocol))
+            u0)))
+
+;; Simplified best protocol finder
+(define-private (find-best-protocol (start uint) (best-so-far uint))
     (let (
-        (protocol-a-details (map-get? protocols protocol-a))
-        (protocol-b-details (map-get? protocols protocol-b))
+        (current-protocol (map-get? protocols start))
     )
-        (if (and
-                (is-some protocol-a-details)
-                (is-some protocol-b-details)
-                (get is-active (unwrap! protocol-a-details protocol-b))
-                (get is-active (unwrap! protocol-b-details protocol-a))
+        (if (is-none current-protocol)
+            best-so-far
+            (let (
+                (current-apy (get apy (unwrap-panic current-protocol)))
+                (current-active (get is-active (unwrap-panic current-protocol)))
+                (next-id (+ start u1))
             )
-            (if (> (get apy (unwrap! protocol-a-details protocol-b))
-                   (get apy (unwrap! protocol-b-details protocol-a)))
-                protocol-a
-                protocol-b)
-            (if (is-some protocol-a-details)
-                (if (get is-active (unwrap! protocol-a-details protocol-b))
-                    protocol-a
-                    protocol-b)
-                protocol-b))))
+                (if (and current-active (> current-apy (get-protocol-apy-safe best-so-far)))
+                    (find-best-protocol next-id start)
+                    (find-best-protocol next-id best-so-far))))))
 
 ;; Iterate through protocols to find the best one
 (define-private (iterate-protocols (current uint) (end uint) (best-so-far uint))
@@ -159,13 +168,16 @@
     (default-to u0
         (get apy (map-get? protocols protocol-id))))
 
-;; Get the best protocol based on APY and TVL
+;; Get the best protocol based on APY
 (define-read-only (get-best-protocol (token-contract <ft-trait>))
     (let (
         (count (var-get protocol-count))
+        (best-id (if (> count u0)
+                    (find-best-protocol u1 u0)
+                    u0))
     )
-    (if (> count u0)
-        (ok (iterate-protocols u1 count u1))
+    (if (> best-id u0)
+        (ok best-id)
         (err ERR-NO-ACTIVE-PROTOCOLS))))
 
 ;; Get user deposit in a protocol
@@ -203,36 +215,29 @@
 (define-public (smart-deposit 
     (token-contract <ft-trait>)
     (amount uint))
-    (let (
-        (best-protocol-result (get-best-protocol token-contract))
-        (user tx-sender)
-    )
+    (begin
         (asserts! (>= amount (var-get min-deposit)) ERR-INVALID-AMOUNT)
-        (asserts! (is-ok best-protocol-result) ERR-NO-ACTIVE-PROTOCOLS)
         
-        (let (
-            (best-protocol (unwrap-panic best-protocol-result))
-            (current-block block-height)
-        )
-            (asserts! (is-protocol-active best-protocol) ERR-PROTOCOL-NOT-ACTIVE)
+        (let ((best-protocol-result (try! (get-best-protocol token-contract))))
+            (asserts! (is-protocol-active best-protocol-result) ERR-PROTOCOL-NOT-ACTIVE)
             
             ;; Transfer tokens to the contract
-            (try! (contract-call? token-contract transfer amount user (as-contract tx-sender) none))
+            (try! (contract-call? token-contract transfer amount tx-sender (as-contract tx-sender) none))
             
             ;; Update user deposits
             (map-set user-deposits 
-                { user: user, protocol-id: best-protocol }
+                { user: tx-sender, protocol-id: best-protocol-result }
                 {
-                    amount: (+ (get-user-deposit user best-protocol) amount),
+                    amount: (+ (get-user-deposit tx-sender best-protocol-result) amount),
                     rewards: u0,
-                    deposit-height: current-block,
-                    last-claim: current-block
+                    deposit-height: block-height,
+                    last-claim: block-height
                 })
             
             ;; Update protocol TVL
-            (update-protocol-tvl best-protocol amount true)
+            (update-protocol-tvl best-protocol-result amount true)
             
-            (ok best-protocol))))
+            (ok best-protocol-result))))
 
 ;; Withdraw assets from a protocol
 (define-public (withdraw-from-protocol 
