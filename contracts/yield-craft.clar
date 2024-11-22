@@ -26,3 +26,15 @@
 (define-data-var min-deposit uint u1000000) ;; in smallest units
 (define-data-var max-slippage uint u50) ;; 0.5%
 (define-data-var platform-fee uint u10) ;; 0.1%
+
+;; Data maps
+(define-map protocols
+    uint 
+    {
+        protocol-address: principal,
+        is-active: bool,
+        tvl: uint,
+        apy: uint,
+        protocol-type: (string-ascii 20)
+    }
+)
