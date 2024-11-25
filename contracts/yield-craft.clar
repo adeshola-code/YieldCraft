@@ -97,7 +97,8 @@
         (is-ok (contract-call? token get-name))
         (is-ok (contract-call? token get-symbol))
         (is-ok (contract-call? token get-decimals))
-        ;; Add more specific checks as needed
+        (not (is-eq (contract-of token) tx-sender)) ;; Prevent self-calling tokens
+        ;; Consider adding additional checks like whitelist or known token validation
     ))
 
 ;; Helper function to deposit to a specific protocol
@@ -250,6 +251,7 @@
     (amount uint))
     (begin
         (asserts! (>= amount (var-get min-deposit)) ERR-INVALID-AMOUNT)
+        (asserts! (is-valid-token token-contract) ERR-INVALID-TOKEN)
         
         (match (get-best-protocol)
             best-protocol-id (deposit-to-protocol token-contract amount best-protocol-id)
