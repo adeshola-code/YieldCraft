@@ -3,10 +3,7 @@
 ;; description: 
 ;; The YieldCraft Protocol Aggregator allows users to deposit assets into the best yielding protocols, 
 ;; manage their deposits, and claim rewards. It supports adding new protocols, updating protocol stats, 
-;; and ensures secure and efficient asset management. The contract includes error handling, data 
-;; variables, and maps to store protocol and user information. It also provides public functions for 
-;; adding protocols, depositing and withdrawing assets, and claiming rewards, as well as read-only 
-;; functions for retrieving protocol and user data.
+;; and ensures secure and efficient asset management.
 
 (impl-trait .protocol-trait.protocol-trait)
 
@@ -23,6 +20,7 @@
 (define-constant ERR-SLIPPAGE-TOO-HIGH (err u105))
 (define-constant ERR-MAX-PROTOCOLS-REACHED (err u106))
 (define-constant ERR-NO-ACTIVE-PROTOCOLS (err u107))
+(define-constant ERR-INVALID-TOKEN (err u108))
 
 ;; Data variables
 (define-data-var contract-owner principal tx-sender)
@@ -81,15 +79,42 @@
 
 ;; Private helper functions
 
+;; Helper function to deposit to a specific protocol
+(define-private (deposit-to-protocol
+    (token-contract <ft-trait>)
+    (amount uint)
+    (protocol-id uint))
+    (begin
+        (asserts! (is-protocol-active protocol-id) ERR-PROTOCOL-NOT-ACTIVE)
+        (asserts! (is-valid-token token-contract) ERR-INVALID-TOKEN)
+        
+        ;; Transfer tokens to the contract
+        (try! (contract-call? token-contract transfer amount tx-sender (as-contract tx-sender) none))
+        
+        ;; Update user deposits
+        (map-set user-deposits 
+            { user: tx-sender, protocol-id: protocol-id }
+            {
+                amount: (+ (get-user-deposit tx-sender protocol-id) amount),
+                rewards: u0,
+                deposit-height: block-height,
+                last-claim: block-height
+            })
+        
+        ;; Update protocol TVL
+        (update-protocol-tvl protocol-id amount true)
+        
+        (ok protocol-id)
+    ))
+
+;; Helper function to validate token contract
+(define-private (is-valid-token (token <ft-trait>))
+    (is-ok (contract-call? token get-name)))
+
+
 ;; Check if sender is contract owner
 (define-private (is-contract-owner)
     (is-eq tx-sender (var-get contract-owner)))
-
-;; Compare two protocols and return the one with higher APY
-(define-private (compare-protocol-apys (protocol-a-apy uint) (protocol-b-apy uint) (protocol-a uint) (protocol-b uint))
-    (if (> protocol-a-apy protocol-b-apy)
-        protocol-a
-        protocol-b))
 
 ;; Get protocol APY safely
 (define-private (get-protocol-apy-safe (protocol-id uint))
@@ -100,42 +125,37 @@
             (get apy (unwrap-panic protocol))
             u0)))
 
-;; Simplified best protocol finder
-(define-private (find-best-protocol (start uint) (best-so-far uint))
-    (let (
-        (current-protocol (map-get? protocols start))
-    )
-        (if (is-none current-protocol)
-            best-so-far
-            (let (
-                (current-apy (get apy (unwrap-panic current-protocol)))
-                (current-active (get is-active (unwrap-panic current-protocol)))
-                (next-id (+ start u1))
-            )
-                (if (and current-active (> current-apy (get-protocol-apy-safe best-so-far)))
-                    (find-best-protocol next-id start)
-                    (find-best-protocol next-id best-so-far))))))
+;; Refactored find-best-protocol function (now private and iterative)
+(define-private (find-best-protocol)
+    (let ((total-protocols (var-get protocol-count)))
+        (fold find-best-protocol-iter (list u1 u2 u3 u4 u5 u6 u7 u8 u9 u10) u0)))
 
-;; Iterate through protocols to find the best one
-(define-private (iterate-protocols (current uint) (end uint) (best-so-far uint))
-    (if (> current end)
+(define-private (find-best-protocol-iter (current-id uint) (best-so-far uint))
+    (if (> current-id (var-get protocol-count))
         best-so-far
-        (iterate-protocols 
-            (+ current u1) 
-            end 
-            (compare-protocols current best-so-far))))
+        (let (
+            (current-protocol (map-get? protocols current-id))
+            (current-apy (get-protocol-apy-safe current-id))
+            (best-apy (get-protocol-apy-safe best-so-far))
+        )
+            (if (and 
+                (is-some current-protocol)
+                (get is-active (unwrap-panic current-protocol))
+                (> current-apy best-apy))
+                current-id
+                best-so-far))))
 
 ;; Calculate rewards based on deposit amount and time
 (define-private (calculate-rewards (user principal) (protocol-id uint))
     (let (
-        (deposit (get-user-deposit user protocol-id))
+        (user-deposit (get-user-deposit user protocol-id))
         (deposit-height (get-deposit-height user protocol-id))
         (protocol (unwrap-panic (map-get? protocols protocol-id)))
         (blocks-elapsed (- block-height deposit-height))
     )
-        (if (or (is-eq deposit u0) (is-eq blocks-elapsed u0))
+        (if (or (is-eq user-deposit u0) (is-eq blocks-elapsed u0))
             u0
-            (/ (* deposit (* blocks-elapsed (get apy protocol))) u10000))))
+            (/ (* user-deposit (* blocks-elapsed (get apy protocol))) u10000))))
 
 ;; Calculate platform fee
 (define-private (calculate-fee (amount uint))
@@ -169,16 +189,11 @@
         (get apy (map-get? protocols protocol-id))))
 
 ;; Get the best protocol based on APY
-(define-read-only (get-best-protocol (token-contract <ft-trait>))
-    (let (
-        (count (var-get protocol-count))
-        (best-id (if (> count u0)
-                    (find-best-protocol u1 u0)
-                    u0))
-    )
-    (if (> best-id u0)
-        (ok best-id)
-        (err ERR-NO-ACTIVE-PROTOCOLS))))
+(define-read-only (get-best-protocol)
+    (let ((best-id (find-best-protocol)))
+        (if (> best-id u0)
+            (ok best-id)
+            (err ERR-NO-ACTIVE-PROTOCOLS))))
 
 ;; Get user deposit in a protocol
 (define-read-only (get-user-deposit (user principal) (protocol-id uint))
@@ -212,32 +227,18 @@
             (ok new-id))))
 
 ;; Deposit assets into the best yielding protocol
-(define-public (smart-deposit 
+(define-public (deposit-to-best-protocol 
     (token-contract <ft-trait>)
     (amount uint))
     (begin
         (asserts! (>= amount (var-get min-deposit)) ERR-INVALID-AMOUNT)
         
-        (let ((best-protocol-result (try! (get-best-protocol token-contract))))
-            (asserts! (is-protocol-active best-protocol-result) ERR-PROTOCOL-NOT-ACTIVE)
-            
-            ;; Transfer tokens to the contract
-            (try! (contract-call? token-contract transfer amount tx-sender (as-contract tx-sender) none))
-            
-            ;; Update user deposits
-            (map-set user-deposits 
-                { user: tx-sender, protocol-id: best-protocol-result }
-                {
-                    amount: (+ (get-user-deposit tx-sender best-protocol-result) amount),
-                    rewards: u0,
-                    deposit-height: block-height,
-                    last-claim: block-height
-                })
-            
-            ;; Update protocol TVL
-            (update-protocol-tvl best-protocol-result amount true)
-            
-            (ok best-protocol-result))))
+        (match (get-best-protocol)
+            best-protocol-id (deposit-to-protocol token-contract amount best-protocol-id)
+            err ERR-NO-ACTIVE-PROTOCOLS
+        )
+    )
+)
 
 ;; Withdraw assets from a protocol
 (define-public (withdraw-from-protocol 
@@ -250,6 +251,7 @@
     )
         (asserts! (>= user-deposit amount) ERR-INSUFFICIENT-BALANCE)
         (asserts! (is-protocol-active protocol-id) ERR-PROTOCOL-NOT-ACTIVE)
+        (asserts! (is-valid-token token-contract) ERR-INVALID-TOKEN)
         
         ;; Calculate fees and rewards
         (let (
