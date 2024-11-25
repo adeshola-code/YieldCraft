@@ -79,6 +79,10 @@
 
 ;; Private helper functions
 
+;; Helper function to validate protocol address
+(define-private (is-valid-protocol-address (protocol-address principal))
+    (is-eq protocol-address protocol-address)) ;; Placeholder validation logic
+
 ;; Helper function to deposit to a specific protocol
 (define-private (deposit-to-protocol
     (token-contract <ft-trait>)
@@ -214,6 +218,7 @@
     (begin
         (asserts! (is-contract-owner) ERR-NOT-AUTHORIZED)
         (asserts! (< (var-get protocol-count) u50) ERR-MAX-PROTOCOLS-REACHED)
+        (asserts! (is-valid-protocol-address protocol-address) ERR-INVALID-PROTOCOL)
         
         (let ((new-id (+ (var-get protocol-count) u1)))
             (map-set protocols new-id {
