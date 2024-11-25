@@ -21,6 +21,7 @@
 (define-constant ERR-MAX-PROTOCOLS-REACHED (err u106))
 (define-constant ERR-NO-ACTIVE-PROTOCOLS (err u107))
 (define-constant ERR-INVALID-TOKEN (err u108))
+(define-constant ERR-INVALID-PROTOCOL-TYPE (err u109))
 
 ;; Data variables
 (define-data-var contract-owner principal tx-sender)
@@ -83,6 +84,22 @@
 (define-private (is-valid-protocol-address (protocol-address principal))
     (is-eq protocol-address protocol-address)) ;; Placeholder validation logic
 
+(define-private (is-valid-protocol-type (protocol-type (string-ascii 20)))
+    (or
+        (is-eq protocol-type "LENDING")
+        (is-eq protocol-type "STAKING")
+        (is-eq protocol-type "YIELD-FARMING")
+        ;; Add more valid types as needed
+    ))
+
+(define-private (is-valid-token (token <ft-trait>))
+    (and
+        (is-ok (contract-call? token get-name))
+        (is-ok (contract-call? token get-symbol))
+        (is-ok (contract-call? token get-decimals))
+        ;; Add more specific checks as needed
+    ))
+
 ;; Helper function to deposit to a specific protocol
 (define-private (deposit-to-protocol
     (token-contract <ft-trait>)
@@ -110,11 +127,6 @@
         
         (ok protocol-id)
     ))
-
-;; Helper function to validate token contract
-(define-private (is-valid-token (token <ft-trait>))
-    (is-ok (contract-call? token get-name)))
-
 
 ;; Check if sender is contract owner
 (define-private (is-contract-owner)
@@ -219,6 +231,7 @@
         (asserts! (is-contract-owner) ERR-NOT-AUTHORIZED)
         (asserts! (< (var-get protocol-count) u50) ERR-MAX-PROTOCOLS-REACHED)
         (asserts! (is-valid-protocol-address protocol-address) ERR-INVALID-PROTOCOL)
+        (asserts! (is-valid-protocol-type protocol-type) ERR-INVALID-PROTOCOL-TYPE)
         
         (let ((new-id (+ (var-get protocol-count) u1)))
             (map-set protocols new-id {
